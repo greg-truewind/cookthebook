@@ -20,52 +20,45 @@ const formSchema = z.object({
     ),
 })
 
+type FormData = z.infer<typeof formSchema>
+
+interface StateMessage {
+  status: string
+  message: string
+  error?: string
+}
+
 export default function Upload() {
   const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [outputData, setOutputData] = useState<any>(null)
-  const [stateMessages, setStateMessages] = useState<any[]>([])
+  const [stateMessages, setStateMessages] = useState<StateMessage[]>([])
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
   })
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: FormData) => {
     setIsLoading(true)
-    setOutputData(null)
     setStateMessages([])
 
     const formData = new FormData()
     formData.append("workpaper", values.workpaper)
 
-    const response = await fetch("/api/upload-workpaper", {
-      method: "POST",
-      body: formData,
-    })
+    try {
+      const response = await fetch("/api/upload-workpaper", {
+        method: "POST",
+        body: formData,
+      })
 
-    if (!response.ok) {
-      console.error("Network response was not ok")
-      setIsLoading(false)
-      return
-    }
-
-    // Listen for Server-Sent Events
-    const eventSource = new EventSource("/api/upload-workpaper")
-
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      console.log("Received event:", data)
-
-      setStateMessages((prev) => [...prev, data])
-
-      if (data.state === "success" || data.state === "failure" || data.state === "error") {
-        eventSource.close()
-        setIsLoading(false)
+      if (!response.ok) {
+        throw new Error("Network response was not ok")
       }
-    }
 
-    eventSource.onerror = (err) => {
-      console.error("EventSource failed:", err)
-      eventSource.close()
+      const result = await response.json()
+      setStateMessages([result])
+    } catch (error) {
+      console.error("Error:", error)
+      setStateMessages([{ status: "error", message: "An error occurred while processing the file." }])
+    } finally {
       setIsLoading(false)
     }
   }
@@ -117,8 +110,8 @@ export default function Upload() {
             </CardHeader>
             <CardContent>
               {stateMessages.map((msg, index) => (
-                <div key={index} className="mb-2">
-                  <strong>{msg.state.toUpperCase()}:</strong> {msg.message}
+                <div key={msg.status + index} className="mb-2">
+                  <strong>{msg.status.toUpperCase()}:</strong> {msg.message}
                   {msg.error && <p className="text-red-500">Error: {msg.error}</p>}
                 </div>
               ))}
